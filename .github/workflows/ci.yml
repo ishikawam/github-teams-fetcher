@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Install GitHub CLI
+      run: |
+        sudo apt-get install -y gh
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies and set up environment
+      run: make install
+
+    - name: Create test config
+      run: |
+        cp config.yaml.example config.yaml
+        sed -i 's/your-organization-1/microsoft/g' config.yaml
+        sed -i 's/your-organization-2/google/g' config.yaml
+
+    - name: Run tests
+      run: make test
+
+    - name: Test Makefile targets
+      run: |
+        make help
+        make config-check
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: make install
+
+    - name: Run linting checks
+      run: make lint
+
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check markdown links
+      uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        use-quiet-mode: 'yes'
+        use-verbose-mode: 'yes'
+        config-file: '.github/workflows/markdown-link-check-config.json'
+
+    - name: Check markdown format
+      run: |
+        npm install -g markdownlint-cli
+        markdownlint "**/*.md" --ignore node_modules --ignore storage --disable MD013 MD022 MD031 MD032 MD040 MD047 MD033 MD009

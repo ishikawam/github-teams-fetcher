@@ -1,0 +1,19 @@
+# GitHub Teams Fetcher Configuration Example
+#
+# Copy this file to config.yaml and customize it for your organizations.
+# cp config.yaml.example config.yaml
+
+# GitHub Organizations to fetch data from
+github:
+  # Single organization (for backward compatibility)
+  # organization: "your-organization"
+  
+  # Multiple organizations (recommended)
+  organizations:
+    - "your-organization-1"  # Replace with your organization names
+    - "your-organization-2"  # (e.g., "microsoft", "google", "facebook")
+    # - "your-organization-3"  # Add more organizations as needed
+
+# API Settings (optional - defaults will be used if not specified)
+api:
+  max_retries: 3  # Number of retries for failed API calls
