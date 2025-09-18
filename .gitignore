@@ -1,0 +1,9 @@
+# Storage directories
+/storage/
+
+# Python
+__pycache__/
+/venv/
+
+# Configuration (may contain sensitive information)
+/config.yaml
