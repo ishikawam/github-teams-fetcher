@@ -91,12 +91,11 @@ clean-orphaned: config-check
 	@echo "Cleaning orphaned files from deleted teams..."
 	@. venv/bin/activate && python -c "import sys; sys.path.insert(0, 'src'); from github_teams.smart_fetcher import SmartFetcher; SmartFetcher().clean_orphaned_files()"
 
-# Clean cache only (preserves important reports in storage/reports/)
+# Clean cache only (preserves important reports and venv)
 clean:
 	@echo "Cleaning cache and temporary files..."
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf storage/cache/
 	rm -rf storage/.pytest_cache/
-	rm -rf venv/
-	@echo "Cache cleaned (reports in storage/reports/ preserved)"
+	@echo "Cache cleaned (reports in storage/reports/ and venv/ preserved)"

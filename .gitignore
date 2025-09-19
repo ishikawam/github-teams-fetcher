@@ -7,3 +7,6 @@ __pycache__/
 
 # Configuration (may contain sensitive information)
 /config.yaml
+
+/.claude/
+/CLAUDE.md
