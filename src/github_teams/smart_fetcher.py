@@ -275,21 +275,6 @@ class SmartFetcher:
         if self.is_file_fresh(str(roles_csv)) and self._validate_roles_file(roles_csv, team_name):
             return True
 
-        # Need team member list first
-        member_txt = Path(self.config.get_data_directory(self.org, "members/txt")) / f"{team_name}.txt"
-        if not member_txt.exists():
-            # No member txt file means empty team - create empty roles CSV as cache
-            print(f"No member file for team: {team_name} (empty team)")
-            try:
-                with open(temp_csv, "w", encoding="utf-8") as f:
-                    f.write("team_name,user_login,role\n")
-                temp_csv.rename(roles_csv)
-                print(f"  Created empty cache file for empty team {team_name}")
-                return True
-            except Exception as e:
-                print(f"  Error creating empty cache file for {team_name}: {e}")
-                return False
-
         print(f"Fetching roles for team: {team_name}")
 
         # Use optimized bulk API call to get all team members with roles
@@ -325,29 +310,11 @@ class SmartFetcher:
                     print(f"  Error creating empty cache file for {team_name}: {e}")
                     return False
 
-            print(f"  Processing {len(members_data)} members with bulk API...")
-
-            # Now get maintainers list to identify roles
-            maintainers_output = self.run_gh_command(
-                [
-                    "gh",
-                    "api",
-                    f"orgs/{self.org}/teams/{team_name}/members",
-                    "--paginate",
-                    "-f",
-                    "role=maintainer",
-                ]
-            )
-
-            maintainers_set = set()
-            if maintainers_output:
-                try:
-                    maintainers_data = json.loads(maintainers_output)
-                    maintainers_set = {m["login"] for m in maintainers_data}
-                except json.JSONDecodeError:
-                    print(f"  Warning: Could not parse maintainers data for {team_name}")
+            print(f"  Processing {len(members_data)} members...")
 
             # Build role data from bulk API results
+            # Note: Role information (maintainer/member) requires 'admin:org' scope
+            # Since we may not have this permission, we'll mark all members as 'member'
             role_data = []
             member_names = []
             for member in members_data:
@@ -355,8 +322,8 @@ class SmartFetcher:
                 if not user_login:
                     continue
 
-                # Determine role based on maintainers list
-                role = "maintainer" if user_login in maintainers_set else "member"
+                # Default role is 'member' (determining actual role requires admin:org scope)
+                role = "member"
                 role_data.append((team_name, user_login, role))
                 member_names.append(user_login)
 
@@ -394,61 +361,51 @@ class SmartFetcher:
             return False
 
     def _validate_roles_file(self, roles_csv: Path, team_name: str) -> bool:
-        """Validate that roles file contains expected number of entries.
+        """Validate that roles file contains valid data.
 
         Args:
             roles_csv: Path to roles CSV file
             team_name: Name of the team
 
         Returns:
-            True if file appears complete
+            True if file appears complete and valid
         """
         if not roles_csv.exists():
             return False
 
-        member_txt = Path(self.config.get_data_directory(self.org, "members/txt")) / f"{team_name}.txt"
-        if not member_txt.exists():
-            # No member txt file means empty team - roles CSV should only have header
-            try:
-                with open(roles_csv, "r", encoding="utf-8") as f:
-                    lines = [line.strip() for line in f if line.strip()]
-                    # Should only have header line for empty teams
-                    if len(lines) == 1 and lines[0] == "team_name,user_login,role":
-                        return True
-                    else:
-                        print(f"  Roles file for empty team {team_name} has unexpected content")
-                        return False
-            except Exception as e:
-                print(f"  Error validating roles file for empty team {team_name}: {e}")
-                return False
-
         try:
-            # Count expected members
-            with open(member_txt, "r", encoding="utf-8") as f:
-                expected_count = len([line for line in f if line.strip()])
-
-            # If no members expected, empty CSV file is valid
-            if expected_count == 0:
-                return True
-
-            # Count actual role entries (excluding header)
+            # Read the roles CSV file
             with open(roles_csv, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f if line.strip()]
-                actual_count = len(lines) - 1  # Exclude header
 
-                # Check if all entries are access_denied (complete failure cache)
-                if actual_count > 0:
-                    access_denied_count = sum(1 for line in lines[1:] if line.endswith(",access_denied"))
-                    if access_denied_count == actual_count:
-                        print(f"  Roles file for {team_name} contains cached access_denied entries - valid cache")
-                        return True
-
-            # Allow up to 5% missing entries (API failures are expected)
-            if actual_count >= expected_count * 0.95:
-                return True
-            else:
-                print(f"  Roles file for {team_name} appears incomplete: {actual_count}/{expected_count} entries")
+            # Must have at least header line
+            if len(lines) < 1:
                 return False
+
+            # Check header format
+            if lines[0] != "team_name,user_login,role":
+                print(f"  Roles file for {team_name} has invalid header")
+                return False
+
+            # Count actual role entries (excluding header)
+            actual_count = len(lines) - 1
+
+            # Empty team (only header) is valid
+            if actual_count == 0:
+                return True
+
+            # Check if all entries are access_denied (complete failure cache)
+            if actual_count > 0:
+                access_denied_count = sum(1 for line in lines[1:] if line.endswith(",access_denied"))
+                if access_denied_count == actual_count:
+                    print(f"  Roles file for {team_name} contains cached access_denied entries - valid cache")
+                    return True
+
+            # If there are valid entries, consider it valid
+            if actual_count > 0:
+                return True
+
+            return False
 
         except Exception as e:
             print(f"  Error validating roles file for {team_name}: {e}")
